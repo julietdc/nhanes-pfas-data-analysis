@@ -6,6 +6,7 @@ output: html_document
 ## 02. Data Analysis
 
 ```{r}
+# Load packages
 library(corrplot)
 library(survey)
 library(dplyr)
@@ -13,9 +14,10 @@ library(broom)
 library(kableExtra)
 library(ggplot2)
 library(tidyr)
+library(patchwork)
 ```
 
-# Functions
+# Define Functions
 
 ```{r}
 # Define function for model formulas
@@ -67,16 +69,15 @@ run_pfas_models <- function(design_object, label = NA) {
 run_pfas_models_nosex <- function(design_object, label = NA) {
   results_nosex <- list()
   
-  # Loop pfas and outcome variables into model form
+  # Loop into model 
   for (outcome in outcome_vars) {
     for (pfas in pfas_vars) {
       
-      # Fit survey-weighted model for each PFAS x outcome
+      # Fit models
       fit <- svyglm(
         model_formula_nosex(pfas, outcome),
         design = design_object)
       
-      # Convert results to a dataframe and append to results_nosex
       model_df <- tidy(fit, conf.int = TRUE) %>%
         filter(term == pfas) %>%
         mutate(
@@ -99,7 +100,7 @@ model_formula_multi <- function(outcome) {
 ```
 
 ```{r}
-# Run mutually adjusted PFAS models
+# Define function for mutually adjusted PFAS models
 run_multi_pfas_models <- function(design_object, label = NA) {
   
   results <- list()
@@ -123,8 +124,33 @@ run_multi_pfas_models <- function(design_object, label = NA) {
   bind_rows(results)}
 ```
 
+```{r}
+# Define function for Forest plots
 
-# A. Correlation Matrix
+make_plot <- function(data, title, xlab) {
+  
+  max_abs <- max(abs(c(data$conf.low, data$conf.high)), na.rm = TRUE)
+  limits <- c(-max_abs, max_abs)
+  
+  ggplot(data, aes(x = estimate, y = PFAS)) +
+    geom_point(aes(color = p.value < 0.05), size = 3) +
+scale_color_manual(values = c("FALSE" = "gray60", "TRUE" = "#002366")) +
+guides(color = "none") +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, color = p.value < 0.05),
+               height = 0.2) +
+   geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.7, color = "gray40") +
+    scale_x_continuous(limits = limits) +
+    labs(title = title, x = xlab, y = NULL) +
+    theme_minimal(base_size = 12) +
+    scale_y_discrete(limits = rev) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank())}
+
+```
+
+
+# A. Figure 1: Correlation Matrix
 
 ```{r}
 # Relabel log transformed vars
@@ -143,6 +169,7 @@ col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA")
 pfas_correlogram <- corrplot(pfas_matrix, method = "color", type = "upper", addCoef.col = "Black", col=col(200), tl.col="black", tl.srt=0)
 pfas_correlogram
 ```
+
 # B. Table 2: PFAS - Biomarker Associations 
 
 ```{r}
@@ -191,7 +218,7 @@ tbl2_final <- tbl2_clean %>%
 ```
 
 ```{r}
-# Formatted table 2
+# Assemble Table 2
 tbl2 <- tbl2_final %>%
   kbl(
     caption = "Table 2. Associations between PFAS compounds and immune biomarkers, NHANES 2015–2018.",
@@ -208,18 +235,14 @@ tbl2
 ```
 
 ```{r}
-# Save tbl2 as .png file
+# Save Table 2 as .png file
 save_kable(tbl2, file = "outputs/Table2_NHANES_2015_2018.png", zoom = 10)
 ```
 
+# C. Figure 2: Main Model Forest Plots
+
 ```{r, message = F}
-# F. Figure 1: Forest Plots (2x2 panel, horizontal, centered at 0)
-
-library(ggplot2)
-library(dplyr)
-library(patchwork)
-
-# Prep data
+# Format data for forest plots
 plot_data <- tbl2_raw %>%
   mutate(
     PFAS = recode(PFAS,
@@ -227,51 +250,25 @@ plot_data <- tbl2_raw %>%
       "log2_PFOS" = "PFOS",
       "log2_PFNA" = "PFNA",
       "log2_PFHxS" = "PFHxS"),
-    PFAS = factor(PFAS, levels = c("PFOA","PFOS","PFNA","PFHxS"))
-  )
+    PFAS = factor(PFAS, levels = c("PFOA","PFOS","PFNA","PFHxS")))
 
-# Split + transform
+# Split and transform the data for plots
 crp_plot <- plot_data %>%
   filter(Outcome == "log2_CRP") %>%
   mutate(
     estimate = (2^estimate - 1) * 100,
     conf.low = (2^conf.low - 1) * 100,
-    conf.high = (2^conf.high - 1) * 100
-  )
+    conf.high = (2^conf.high - 1) * 100)
 
 wbc_plot <- plot_data %>%
   filter(Outcome == "log2_WBC") %>%
   mutate(
     estimate = (2^estimate - 1) * 100,
     conf.low = (2^conf.low - 1) * 100,
-    conf.high = (2^conf.high - 1) * 100
-  )
+    conf.high = (2^conf.high - 1) * 100)
 
 lymph_plot <- plot_data %>% filter(Outcome == "Lymphocytes")
 neut_plot  <- plot_data %>% filter(Outcome == "Neutrophils")
-
-# Plot function (centered at 0 per panel)
-make_plot <- function(data, title, xlab) {
-  
-  max_abs <- max(abs(c(data$conf.low, data$conf.high)), na.rm = TRUE)
-  limits <- c(-max_abs, max_abs)
-  
-  ggplot(data, aes(x = estimate, y = PFAS)) +
-    geom_point(aes(color = p.value < 0.05), size = 3) +
-scale_color_manual(values = c("FALSE" = "gray60", "TRUE" = "#002366")) +
-guides(color = "none") +
-    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, color = p.value < 0.05),
-               height = 0.2) +
-   geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.7, color = "gray40") +
-    scale_x_continuous(limits = limits) +
-    labs(title = title, x = xlab, y = NULL) +
-    theme_minimal(base_size = 12) +
-    scale_y_discrete(limits = rev) +
-    theme(
-      plot.title = element_text(face = "bold"),
-      panel.grid.minor = element_blank() 
-    )
-}
 
 # Create plots
 p1 <- make_plot(crp_plot,  "A. C-reactive protein", "Percent change per doubling of PFAS")
@@ -285,18 +282,18 @@ forest <- (p1 | p2) / (p3 | p4) +
   theme(plot.margin = margin(10, 10, 10, 10))
 forest
 ```
+
 ```{r}
+# Save forest plot panel as .png
 ggsave(
   filename = "outputs/Figure1_ForestPlots.png",
   plot = forest,
   width = 10,
   height = 8,
-  dpi = 300
-)
+  dpi = 300)
 ```
 
-
-# C. Table 3: Age-Stratified PFAS - Biomarker Associations
+# D. Table 3: Age-Stratified PFAS - Biomarker Associations
 
 ```{r}
 # Subset survey design object by age group
@@ -359,30 +356,30 @@ tbl3_final <- tbl3_clean %>%
 ```
 
 ```{r}
+# Formatting for Table 3
 tbl3_side <- tbl3_clean %>%
   select(Group, Outcome, PFAS, beta_ci, p_value, q_value) %>%
   pivot_wider(
     names_from = Group,
     values_from = c(beta_ci, p_value, q_value),
-    names_glue = "{Group}_{.value}"
-  ) %>%
+    names_glue = "{Group}_{.value}") %>%
   transmute(
     `Immune Biomarker` = Outcome,
-    `PFAS Compound`   = PFAS,
+    `PFAS Compound` = PFAS,
 
     # Adolescents block
     `β (95% CI)` = `Adolescents (12–17)_beta_ci`,
-    `p-value`          = `Adolescents (12–17)_p_value`,
-    `q-value`          = `Adolescents (12–17)_q_value`,
+    `p-value` = `Adolescents (12–17)_p_value`,
+    `q-value` = `Adolescents (12–17)_q_value`,
 
     # Adults block
-    `β (95% CI) ` = `Adults (≥18)_beta_ci`,  # space forces uniqueness
-    `p-value `          = `Adults (≥18)_p_value`,
-    `q-value `          = `Adults (≥18)_q_value`
-  )
+    `β (95% CI) ` = `Adults (≥18)_beta_ci`, 
+    `p-value ` = `Adults (≥18)_p_value`,
+    `q-value ` = `Adults (≥18)_q_value`)
 ```
 
 ```{r}
+# Assemble Table 3
 tbl3c <- tbl3_side %>%
   kbl(
     caption = "Table 3. Age-stratified associations between PFAS compounds and immune biomarkers, NHANES 2015–2018.",
@@ -404,12 +401,12 @@ tbl3c
 
 
 ```{r}
-# Save tbl3
+# Save Table 3 as .png
 save_kable(tbl3c, file = "outputs/Table3_NHANES_2015_2018.png", zoom = 2)
 ```
 
 
-# D. Table 4: Sex-Stratified PFAS - Biomarker Associations
+# E. Table 4: Sex-Stratified PFAS - Biomarker Associations
 
 ```{r}
 # Subset survey design object by sex
@@ -427,7 +424,7 @@ table4_raw <- bind_rows(
 ```{r}
 # Collect model results and format
 tbl4_fmt <- table4_raw %>%
-  group_by(Group) %>%                      # FDR within sex
+  group_by(Group) %>%                      # FDR correctio nfor multuple testing within sex
   mutate(
     q_value = p.adjust(p.value, method = "fdr"),
     beta_ci = sprintf(
@@ -471,6 +468,7 @@ tbl4_final <- tbl4_clean %>%
 ```
 
 ```{r}
+# Formatting for Table 4
 tbl4_side <- tbl4_clean %>%
   select(Group, Outcome, PFAS, beta_ci, p_value, q_value) %>%
   pivot_wider(
@@ -494,6 +492,7 @@ tbl4_side <- tbl4_clean %>%
 ```
 
 ```{r}
+# Assemble Table 4
 tbl4 <- tbl4_side %>%
   kbl(
     caption = "Table 4. Sex-stratified associations between PFAS compounds and immune biomarkers, NHANES 2015–2018.",
@@ -515,13 +514,14 @@ tbl4
 ```
 
 ```{r}
-# Save tbl4
+# Save Table 4 as .png
 save_kable(tbl4, file = "outputs/Table4_NHANES_2015_2018.png", zoom = 2)
 ```
 
-# E. Table 5: Multi-PFAS - Biomarker Model
+# F. Table 5: Multi-PFAS - Biomarker Model
 
 ```{r}
+# Use function to run multi-PFAS model
 tbl5_raw <- run_multi_pfas_models(
   design_object = nhanes_design,
   label = "Overall") %>%
@@ -535,6 +535,7 @@ tbl5_raw <- run_multi_pfas_models(
 ```
 
 ```{r}
+# Table 5 formatting
 tbl5_clean <- tbl5_raw %>%
   mutate(
     Outcome = factor(
@@ -553,6 +554,7 @@ tbl5_clean <- tbl5_raw %>%
 ```
 
 ```{r}
+# Table 5 Formatting 
 tbl5_final <- tbl5_clean %>%
   select(Outcome, PFAS, beta_ci, p_value, q_value) %>%
   rename(
@@ -564,6 +566,7 @@ tbl5_final <- tbl5_clean %>%
 ```
 
 ```{r}
+# Assemble Table 5
 tbl5 <- tbl5_final %>%
   kbl(
     caption = "Table 5. Mutually adjusted associations between PFAS compounds and immune biomarkers, NHANES 2015–2018.",
@@ -579,57 +582,9 @@ tbl5
 ```
 
 ```{r}
-# Save tbl5
+# Save Table 5 as .png
 save_kable(tbl5, file = "outputs/Table5_NHANES_2015_2018.png", zoom = 2)
 ```
 
 
-
-
-```{r}
-model_age_int <- svyglm(
-  log2_CRP ~ log2_PFOA * AgeGroup +
-    Age + factor(Sex) + factor(Race_Ethnicity) +
-    Income_Ratio + log2_Cotinine,
-  design = nhanes_design
-)
-
-regTermTest(model_age_int, ~ log2_PFOA:AgeGroup)
-```
-```{r}
-model_sex_int <- svyglm(
-  log2_CRP ~ log2_PFOA * factor(Sex) +
-    Age + factor(Race_Ethnicity) +
-    Income_Ratio + log2_Cotinine,
-  design = nhanes_design
-)
-regTermTest(model_sex_int, ~ log2_PFOA:factor(Sex))
-```
-
-```{r}
-test_interaction <- function(pfas, outcome, modifier) {
-  
-  formula_int <- as.formula(
-    paste0(outcome, " ~ ", pfas, " * ", modifier,
-           " + Age + factor(Sex) + factor(Race_Ethnicity)",
-           " + Income_Ratio + log2_Cotinine")
-  )
-  
-  fit <- svyglm(formula_int, design = nhanes_design)
-  
-  regTermTest(fit, as.formula(paste0("~", pfas, ":", modifier)))
-}
-
-test_interaction("log2_PFOA", "log2_CRP", "AgeGroup")
-test_interaction("log2_PFOS", "log2_WBC", "factor(Sex)")
-```
-
-
-
-
-
-
-
-
-
-
+## END

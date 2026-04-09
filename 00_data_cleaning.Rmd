@@ -7,14 +7,14 @@ output:
 
 ## 00. Data Cleaning
 
-```{r, message=F}
-# Load libraries
+```{r}
+# Load packages
 library(nhanesA)
 library(dplyr)
 library(survey)
 ```
 
-```{r, message=F}
+```{r}
 # Import NHANES 
 demo_i <- nhanes('DEMO_I')    # 2015–2016 demographics
 demo_j <- nhanes('DEMO_J')    # 2017–2018 demographics
@@ -58,26 +58,24 @@ nhanes_analysis <- nhanes %>%
 # Rename variables and create age groups
 nhanes_analysis <- nhanes_analysis %>%
   rename(
-    Age = RIDAGEYR,
-    Sex = RIAGENDR,
-    Race_Ethnicity = RIDRETH3,
-    Income_Ratio = INDFMPIR,
-    Cotinine = LBXCOT,
-    CRP = LBXHSCRP,
-    WBC = LBXWBCSI,
-    Lymphocytes = LBXLYPCT,
-    Neutrophils = LBXNEPCT,
-    PFOA = LBXNFOA,
-    PFOS = LBXNFOS,
-    PFNA = LBXPFNA,
-    PFHxS = LBXPFHS
+    Age = RIDAGEYR,                 # age at screening (years)
+    Sex = RIAGENDR,                 # sex (1 = male, 2 = female)
+    Race_Ethnicity = RIDRETH3,      # non-hispanic black, non-hispanic white, non-hispanic asian, other hispanic, mexican american
+    Income_Ratio = INDFMPIR,        # ratio of family income to the federal poverty limit
+    Cotinine = LBXCOT,              # serum cotinine (ng/mL)
+    CRP = LBXHSCRP,                 # serum c-reactive protein (mg/L)
+    WBC = LBXWBCSI,                 # total white blood cell count (10^9/L)
+    Lymphocytes = LBXLYPCT,         # lymphocytes (% of total WBC count)
+    Neutrophils = LBXNEPCT,         # neutrophils (% of total WBC count)
+    PFOA = LBXNFOA,                 # serum perfluorooctanoic acid (ng/mL)
+    PFOS = LBXNFOS,                 # serum perfluorooctane sulfonic acid (ng/mL)
+    PFNA = LBXPFNA,                 # serum perfluorononanoic acid (ng/mL)
+    PFHxS = LBXPFHS                 # serum perfluorohexane sulfonic acid (ng/mL)
   ) %>%
   mutate(
     AgeGroup = case_when(
       Age >= 18 ~ "Adults (≥18)",
-      Age >= 12 & Age < 18 ~ "Adolescents (12–17)"
-    )
-  )
+      Age >= 12 & Age < 18 ~ "Adolescents (12–17)"))
 ```
 
 ```{r}
@@ -124,8 +122,7 @@ nhanes_design <- svydesign(
   strata = ~SDMVSTRA,
   weights = ~WTSB4YR,
   nest = TRUE,
-  data = nhanes_weighted
-)
+  data = nhanes_weighted)
 ```
 
 ```{r}
