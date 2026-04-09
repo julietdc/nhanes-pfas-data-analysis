@@ -1,0 +1,135 @@
+---
+title: "00_data_cleaning"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## 00. Data Cleaning
+
+```{r, message=F}
+# Load libraries
+library(nhanesA)
+library(dplyr)
+library(survey)
+```
+
+```{r, message=F}
+# Import NHANES 
+demo_i <- nhanes('DEMO_I')    # 2015–2016 demographics
+demo_j <- nhanes('DEMO_J')    # 2017–2018 demographics
+pfas_i <- nhanes('PFAS_I')    # 2015–2016 PFAS
+pfas_j <- nhanes('PFAS_J')    # 2017–2018 PFAS
+cbc_i <- nhanes('CBC_I')      # 2015–2016 CBC
+cbc_j <- nhanes('CBC_J')      # 2017–2018 CBC
+hscrp_i <- nhanes('HSCRP_I')  # 2015–2016 CRP
+hscrp_j <- nhanes('HSCRP_J')  # 2017–2018 CRP
+cot_i <- nhanes('COT_I')      # 2015–2016 serum cotinine
+cot_j <- nhanes('COT_J')      # 2017–2018 serum cotinine
+```
+
+```{r}
+# Bind survey cycles 
+demo <- bind_rows(demo_i, demo_j)
+pfas <- bind_rows(pfas_i, pfas_j)
+cbc <- bind_rows(cbc_i, cbc_j)
+hscrp <- bind_rows(hscrp_i, hscrp_j)
+cot <- bind_rows(cot_i, cot_j)
+```
+
+```{r}
+# Merge datasets using Participant SEQN ID 
+nhanes <- demo %>%
+  left_join(pfas, by = "SEQN") %>%
+  left_join(cbc, by = "SEQN") %>%
+  left_join(hscrp, by = "SEQN") %>%
+  left_join(cot, by = "SEQN")
+```
+
+```{r}
+# Select variables
+nhanes_analysis <- nhanes %>%
+  select(SEQN, RIDAGEYR, RIAGENDR, RIDRETH3, INDFMPIR,
+         SDMVPSU, SDMVSTRA, WTMEC2YR, WTSB2YR, starts_with("LBX"), LBXWBCSI,
+         LBXLYPCT, LBXNEPCT, LBXEOPCT, LBXPLTSI, LBXCOT, LBXHSCRP)
+```
+
+```{r}
+# Rename variables and create age groups
+nhanes_analysis <- nhanes_analysis %>%
+  rename(
+    Age = RIDAGEYR,
+    Sex = RIAGENDR,
+    Race_Ethnicity = RIDRETH3,
+    Income_Ratio = INDFMPIR,
+    Cotinine = LBXCOT,
+    CRP = LBXHSCRP,
+    WBC = LBXWBCSI,
+    Lymphocytes = LBXLYPCT,
+    Neutrophils = LBXNEPCT,
+    PFOA = LBXNFOA,
+    PFOS = LBXNFOS,
+    PFNA = LBXPFNA,
+    PFHxS = LBXPFHS
+  ) %>%
+  mutate(
+    AgeGroup = case_when(
+      Age >= 18 ~ "Adults (≥18)",
+      Age >= 12 & Age < 18 ~ "Adolescents (12–17)"
+    )
+  )
+```
+
+```{r}
+# Remove participants with NA values
+nhanes_analysis <- nhanes_analysis %>%
+  filter(
+    !is.na(PFOA), !is.na(PFOS), !is.na(PFNA), !is.na(PFHxS),
+    !is.na(CRP), !is.na(WBC), !is.na(Lymphocytes), !is.na(Neutrophils),
+    !is.na(Cotinine), !is.na(Income_Ratio),
+    !is.na(Sex), !is.na(Race_Ethnicity), !is.na(Age)
+  )
+```
+
+```{r}
+# Save unweighted analysis dataset
+saveRDS(nhanes_analysis, "data/nhanes_analysis.rds")
+```
+
+```{r}
+# Log2-transform skewed variables
+nhanes_transformed <- nhanes_analysis %>%
+  mutate(
+    log2_PFOA = log2(PFOA),
+    log2_PFOS = log2(PFOS),
+    log2_PFNA = log2(PFNA),
+    log2_PFHxS = log2(PFHxS),
+    log2_CRP = log2(CRP),
+    log2_WBC = log2(WBC),
+    log2_Cotinine = log2(Cotinine)
+  )
+```
+
+```{r}
+# Apply survey weights (survey weights / # of cycles)
+nhanes_weighted <- nhanes_transformed %>%
+  filter(!is.na(WTSB2YR)) %>%              # PFAS subsample restriction
+  mutate(WTSB4YR = WTSB2YR / 2)            # Divide survey weights by 2 cycles
+```
+
+```{r}
+# Create survey design object
+nhanes_design <- svydesign(
+  ids = ~SDMVPSU,
+  strata = ~SDMVSTRA,
+  weights = ~WTSB4YR,
+  nest = TRUE,
+  data = nhanes_weighted
+)
+```
+
+```{r}
+# Save weighted objects
+saveRDS(nhanes_weighted, "data/nhanes_weighted.rds")
+saveRDS(nhanes_design, "data/nhanes_design.rds")
+```

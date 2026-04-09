@@ -1,0 +1,104 @@
+---
+title: "01_tableone"
+output: html_document
+---
+
+## 01. Table 1: Characteristics of Study Population
+
+```{r}
+# Load libraries
+library(dplyr)
+library(survey)
+library(srvyr)
+library(gtsummary)
+library(gt)
+```
+
+```{r}
+# Load analysis dataset
+nhanes_analysis <- readRDS("data/nhanes_analysis.rds")
+```
+
+```{r}
+# Define functions for geometric mean/sd reporting 
+geo_mean <- function(x) exp(mean(log(x), na.rm = TRUE))
+geo_sd   <- function(x) exp(sd(log(x), na.rm = TRUE))
+```
+
+```{r}
+# Create unweighted Table 1
+tbl1 <- nhanes_analysis %>%
+  tbl_summary(
+    by = AgeGroup,
+    include = c(
+      Age, Sex, Race_Ethnicity, Income_Ratio,
+      Cotinine, CRP, WBC, Lymphocytes, Neutrophils,
+      PFOA, PFOS, PFNA, PFHxS
+    ),
+    label = list(
+  Age ~ "Age (years)",
+  Sex ~ "Sex",
+  Race_Ethnicity ~ "Race/Ethnicity",
+  Income_Ratio ~ "Income-to-poverty ratio",
+  Cotinine ~ "Serum cotinine (ng/mL)",
+  CRP ~ "C-reactive protein (mg/L)",
+  WBC ~ "White blood cell count (10⁹/L)",
+  Lymphocytes ~ "Lymphocytes (%)",
+  Neutrophils ~ "Neutrophils (%)",
+  PFOA ~ "PFOA (ng/mL)",
+  PFOS ~ "PFOS (ng/mL)",
+  PFNA ~ "PFNA (ng/mL)",
+  PFHxS ~ "PFHxS (ng/mL)"
+  ),
+    statistic = list(
+  # Demographic variables
+  Age ~ "{mean} ({sd})",
+  Income_Ratio ~ "{mean} ({sd})",
+
+  # Biomarkers
+  Cotinine ~ "{median} ({p25}, {p75})",
+  CRP ~ "{median} ({p25}, {p75})",
+  WBC ~ "{median} ({p25}, {p75})",
+
+  # Differential counts
+  Lymphocytes ~ "{mean} ({sd})",
+  Neutrophils ~ "{mean} ({sd})",
+
+  # PFAS
+  PFOA ~ "{geo_mean} ({geo_sd})",
+  PFOS ~ "{geo_mean} ({geo_sd})",
+  PFNA ~ "{geo_mean} ({geo_sd})",
+  PFHxS ~ "{geo_mean} ({geo_sd})",
+
+  # Categorical
+  Sex ~ "{n} ({p})",
+  Race_Ethnicity ~ "{n} ({p})"
+),
+    digits = list(
+      all_continuous() ~ 2,
+      all_categorical() ~ list(n = 0, p = 1)
+    ),
+    percent = "column",
+    missing = "no"
+  ) %>%
+  bold_labels() %>%
+  modify_caption(
+    paste0(
+      "Table 1. Characteristics of the study population in NHANES 2015–2018 (n = ",
+      nrow(nhanes_analysis), ")."
+    )
+  ) %>%
+  modify_footnote(
+    all_stat_cols() ~
+      "Continuous variables are presented as mean (SD) for age, income-to-poverty ratio, lymphocytes, and neutrophils; geometric mean (GSD) for PFAS concentrations; and median (IQR) for serum cotinine, C-reactive protein, and white blood cell count. Categorical variables are presented as n (%). The income-to-poverty ratio represents total family income divided by the federal poverty threshold for family size and survey year, with values <1 indicating income below the poverty line. Abbreviations: PFOA, perfluorooctanoic acid; PFOS, perfluoroctane sulfonate; PFNA, perfluorononanoic acid; PFHxS, perfluorohexane sulfonate.",
+    footnote_as_chunk = TRUE
+  )
+
+tbl1
+```
+
+```{r}
+tbl1 %>%
+  as_gt() %>%
+  gtsave("outputs/Table1_NHANES_2015_2018.html")
+```
